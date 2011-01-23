@@ -29,6 +29,7 @@
 #include <X11/extensions/Xrandr.h>
 
 #include <libtu/rb.h>
+#include <libtu/objp.h>
 
 #include <ioncore/common.h>
 #include <ioncore/eventh.h>
@@ -70,13 +71,28 @@ static void insrot(int id, int r)
         node->v.ival=r;
 }
 
+static WRegion *getexistingscreen(WMPlex *mplex, int index)
+{
+    WMPlexIterTmp tmp;
+    WRegion *reg;
+    int current_idx = 0;
+    FOR_ALL_MANAGED_BY_MPLEX(mplex, reg, tmp){
+        if (index == current_idx) {
+            fprintf(stderr, "Is a %s\n", ((Obj*)reg)->obj_type->name);
+            return reg;
+        }
+        current_idx++;
+    }
+    return NULL;
+}
+
 /*
  * Put a WScreen on each monitor
  */
 void init_screens()
 {
     int screencount;
-    int screen;
+    int screennr;
     int existingscreencount = 0;
     WRootWin* rootWin = ioncore_g.rootwins;
     struct xrandr_output_info** output_infos = xrandr_init(ioncore_g.dpy, "ion display", &screencount);
@@ -90,31 +106,39 @@ void init_screens()
 
     FOR_ALL_MANAGED_BY_MPLEX(&rootWin->scr.mplex, reg, tmp){
         existingscreencount++;
-        fprintf(stderr, "One managed before at %p\n", reg);
+        fprintf(stderr, "One managed before at %p\n", (void*)reg);
     }
 
-    // disregard the last one - this is probably the hidden root screen?
+    /* disregard the last one - this is probably the hidden root screen? */
     if (existingscreencount > 0)
         existingscreencount--;
 
-    for (screen = 0; screen < screencount; screen++){
-        struct xrandr_output_info* output_info = output_infos[screen];
+    for (screennr = 0; screennr < screencount; screennr++){
+        struct xrandr_output_info* output_info = output_infos[screennr];
+
+        WFitParams fp;
+        fp.g.x = output_info->x;
+        fp.g.y = output_info->y;
+        fp.g.w = output_info->w;
+        fp.g.h = output_info->h;
+        fp.mode = REGION_FIT_EXACT;
+        fprintf(stderr, "Size: %d x %d at %d x %d\n", fp.g.w, fp.g.h, fp.g.x, fp.g.y);
         
-        //WRegion *existingScreen = mplex_mx_nth(&rootWin->scr.mplex, screen);
-        if (screen < existingscreencount) {
-            fprintf(stderr, "One existing screen %d\n", screen);
+        if (screennr < existingscreencount) {
+            WRegion *existingscreen = getexistingscreen(&rootWin->scr.mplex, screennr);
+            /* the screen sizes are likely stable, but we need to reposition 
+             * the existing screen anyway because the order and thus the 
+             * might have changed */
+            fprintf(stderr, "One existing screen %d\n", screennr);
+
+            /* for some reason this does not appear to have any effect? */
+            REGION_GEOM(existingscreen)=fp.g;
+            mplex_managed_geom((WMPlex*)existingscreen, &(fp.g));
+            mplex_do_fit_managed((WMPlex*)existingscreen, &fp);
         } else {
             WScreen* newScreen;
-            WFitParams fp;
             WMPlexAttachParams par = MPLEXATTACHPARAMS_INIT;
-            fprintf(stderr, "One new screen %d\n", screen);
-
-            fp.g.x = output_info->x;
-            fp.g.y = output_info->y;
-            fp.g.w = output_info->w;
-            fp.g.h = output_info->h;
-            fp.mode = REGION_FIT_EXACT;
-            fprintf(stderr, "Size: %dx%d at %dx%d\n", fp.g.w, fp.g.h, fp.g.x, fp.g.y);
+            fprintf(stderr, "One new screen %d\n", screennr);
     
             par.flags = MPLEX_ATTACH_GEOM|MPLEX_ATTACH_SIZEPOLICY|MPLEX_ATTACH_UNNUMBERED;
             par.geom = fp.g;
@@ -122,14 +146,15 @@ void init_screens()
 
             newScreen = (WScreen*) mplex_do_attach_new(&rootWin->scr.mplex, &par,
                 (WRegionCreateFn*)create_screen, NULL);
-            newScreen->id = screen;
+            newScreen->id = screennr;
         }
     }
 
     FOR_ALL_MANAGED_BY_MPLEX(&rootWin->scr.mplex, reg, tmp){
         existingscreencount++;
-        fprintf(stderr, "One now managed at %p\n", reg);
+        fprintf(stderr, "One now managed at %p\n", (void*)reg);
     }
+    mplex_fit_managed(&rootWin->scr.mplex);
 
     rootWin->scr.id = -2;
 }
@@ -149,6 +174,8 @@ bool handle_xrandr_event(XEvent *ev)
         bool pivot=FALSE;
 
         update_screens();
+        /* for now stop here - we probably don't need the original code below anymore */
+        return TRUE;
         
         screen=XWINDOW_REGION_OF_T(rev->root, WScreen);
         
