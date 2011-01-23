@@ -35,6 +35,7 @@
 #include <ioncore/global.h>
 #include <ioncore/event.h>
 #include <ioncore/mplex.h>
+#include <ioncore/stacking.h>
 #include <ioncore/xwindow.h>
 #include <ioncore/../version.h>
 #include "xrandr.h"
@@ -76,34 +77,58 @@ void init_screens()
 {
     int screencount;
     int screen;
+    int existingscreencount = 0;
     WRootWin* rootWin = ioncore_g.rootwins;
     struct xrandr_output_info** output_infos = xrandr_init(ioncore_g.dpy, "ion display", &screencount);
+    WMPlexIterTmp tmp;
+    WRegion *reg;
+    
+    if (output_infos == NULL)
+        return;
 
-    fprintf(stderr, "initted: %d\n", screencount);
+    fprintf(stderr, "screen count: %d\n", screencount);
+
+    FOR_ALL_MANAGED_BY_MPLEX(&rootWin->scr.mplex, reg, tmp){
+        existingscreencount++;
+        fprintf(stderr, "One managed before at %p\n", reg);
+    }
+
+    // disregard the last one - this is probably the hidden root screen?
+    if (existingscreencount > 0)
+        existingscreencount--;
 
     for (screen = 0; screen < screencount; screen++){
         struct xrandr_output_info* output_info = output_infos[screen];
+        
+        //WRegion *existingScreen = mplex_mx_nth(&rootWin->scr.mplex, screen);
+        if (screen < existingscreencount) {
+            fprintf(stderr, "One existing screen %d\n", screen);
+        } else {
+            WScreen* newScreen;
+            WFitParams fp;
+            WMPlexAttachParams par = MPLEXATTACHPARAMS_INIT;
+            fprintf(stderr, "One new screen %d\n", screen);
 
-        WScreen* newScreen;
-        WFitParams fp;
-        WMPlexAttachParams par = MPLEXATTACHPARAMS_INIT;
+            fp.g.x = output_info->x;
+            fp.g.y = output_info->y;
+            fp.g.w = output_info->w;
+            fp.g.h = output_info->h;
+            fp.mode = REGION_FIT_EXACT;
+            fprintf(stderr, "Size: %dx%d at %dx%d\n", fp.g.w, fp.g.h, fp.g.x, fp.g.y);
+    
+            par.flags = MPLEX_ATTACH_GEOM|MPLEX_ATTACH_SIZEPOLICY|MPLEX_ATTACH_UNNUMBERED;
+            par.geom = fp.g;
+            par.szplcy = SIZEPOLICY_FULL_EXACT;
 
-        fprintf(stderr, "One screen\n");
+            newScreen = (WScreen*) mplex_do_attach_new(&rootWin->scr.mplex, &par,
+                (WRegionCreateFn*)create_screen, NULL);
+            newScreen->id = screen;
+        }
+    }
 
-        fp.g.x = output_info->x;
-        fp.g.y = output_info->y;
-        fp.g.w = output_info->w;
-        fp.g.h = output_info->h;
-        fp.mode = REGION_FIT_EXACT;
-        fprintf(stderr, "Size: %dx%d at %dx%d\n", fp.g.w, fp.g.h, fp.g.x, fp.g.y);
-
-        par.flags = MPLEX_ATTACH_GEOM|MPLEX_ATTACH_SIZEPOLICY|MPLEX_ATTACH_UNNUMBERED;
-        par.geom = fp.g;
-        par.szplcy = SIZEPOLICY_FULL_EXACT;
-
-        newScreen = (WScreen*) mplex_do_attach_new(&rootWin->scr.mplex, &par,
-            (WRegionCreateFn*)create_screen, NULL);
-        newScreen->id = screen;
+    FOR_ALL_MANAGED_BY_MPLEX(&rootWin->scr.mplex, reg, tmp){
+        existingscreencount++;
+        fprintf(stderr, "One now managed at %p\n", reg);
     }
 
     rootWin->scr.id = -2;
@@ -111,7 +136,7 @@ void init_screens()
 
 void update_screens()
 {
-    /* TODO implement */
+    init_screens();
 }
 
 bool handle_xrandr_event(XEvent *ev)

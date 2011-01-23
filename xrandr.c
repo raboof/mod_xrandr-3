@@ -1012,12 +1012,13 @@ get_outputs (void)
     }
 }
 
-int count_outputs_with_mode(output_t* outputs)
+/** connected outputs with a mode */
+int count_relevant_outputs(output_t* outputs)
 {
     output_t *output;
     int i = 0;
     for (output = outputs; output; output = output->next)
-        if (output->mode_info)
+        if (output->mode_info && output->output_info->connection == RR_Connected)
             i++;
     return i;
 }
@@ -1027,9 +1028,9 @@ int count_outputs_with_mode(output_t* outputs)
 struct xrandr_output_info**
 xrandr_init(Display* display, char *display_name, int *noutputs)
 {
-    int                event_base, error_base;
-    int                major, minor;
-    output_t    *output;
+    int event_base, error_base;
+    int major, minor;
+    output_t *output;
     struct xrandr_output_info** result;
     int output_count = 0;
     int output_idx = 0;
@@ -1073,7 +1074,7 @@ xrandr_init(Display* display, char *display_name, int *noutputs)
 
     fprintf (stderr, "Screen %d\n", screen);
 
-    output_count = count_outputs_with_mode(outputs);
+    output_count = count_relevant_outputs(outputs);
     result = (struct xrandr_output_info**) malloc(output_count * sizeof(struct xrandr_output_info*));
 
     for (output = outputs; output; output = output->next)
@@ -1085,7 +1086,7 @@ xrandr_init(Display* display, char *display_name, int *noutputs)
         Rotation            rotations = output_rotations (output);
 
         fprintf (stderr, "%s %s", output_info->name, connection[output_info->connection]);
-        if (mode)
+        if (mode && output_info->connection == RR_Connected)
         {
             result[output_idx] = (struct xrandr_output_info*) malloc(sizeof(struct xrandr_output_info));
             if (crtc_info) {
@@ -1137,7 +1138,7 @@ xrandr_init(Display* display, char *display_name, int *noutputs)
             printf (")");
         }
 
-        printf ("\n");
+        fprintf (stderr, "\n");
     }
     *noutputs = output_count;
     return result;
