@@ -4,7 +4,7 @@
 ##
 
 # System specific configuration is in system.mk
-TOPDIR=../ion-3
+TOPDIR=../notion
 include $(TOPDIR)/build/system-inc.mk
 
 ######################################
@@ -12,7 +12,7 @@ include $(TOPDIR)/build/system-inc.mk
 INCLUDES += $(LIBTU_INCLUDES) $(LIBEXTL_INCLUDES) $(X11_INCLUDES) -I$(TOPDIR)
 CFLAGS += $(XOPEN_SOURCE) $(C99_SOURCE)
 
-SOURCES=mod_xrandr.c
+SOURCES=mod_xrandr.c xrandr.c
 
 MAKE_EXPORTS=xrandr_module
 LIBS = $(X11_LIBS) -lXrandr

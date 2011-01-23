@@ -37,6 +37,7 @@
 #include <ioncore/mplex.h>
 #include <ioncore/xwindow.h>
 #include <ioncore/../version.h>
+#include "xrandr.h"
 
 char mod_xrandr_ion_api_version[]=ION_API_VERSION;
 
@@ -68,6 +69,50 @@ static void insrot(int id, int r)
         node->v.ival=r;
 }
 
+/*
+ * Put a WScreen on each monitor
+ */
+void init_screens()
+{
+    int screencount;
+    int screen;
+    WRootWin* rootWin = ioncore_g.rootwins;
+    struct xrandr_output_info** output_infos = xrandr_init(ioncore_g.dpy, "ion display", &screencount);
+
+    fprintf(stderr, "initted: %d\n", screencount);
+
+    for (screen = 0; screen < screencount; screen++){
+        struct xrandr_output_info* output_info = output_infos[screen];
+
+        WScreen* newScreen;
+        WFitParams fp;
+        WMPlexAttachParams par = MPLEXATTACHPARAMS_INIT;
+
+        fprintf(stderr, "One screen\n");
+
+        fp.g.x = output_info->x;
+        fp.g.y = output_info->y;
+        fp.g.w = output_info->w;
+        fp.g.h = output_info->h;
+        fp.mode = REGION_FIT_EXACT;
+        fprintf(stderr, "Size: %dx%d at %dx%d\n", fp.g.w, fp.g.h, fp.g.x, fp.g.y);
+
+        par.flags = MPLEX_ATTACH_GEOM|MPLEX_ATTACH_SIZEPOLICY|MPLEX_ATTACH_UNNUMBERED;
+        par.geom = fp.g;
+        par.szplcy = SIZEPOLICY_FULL_EXACT;
+
+        newScreen = (WScreen*) mplex_do_attach_new(&rootWin->scr.mplex, &par,
+            (WRegionCreateFn*)create_screen, NULL);
+        newScreen->id = screen;
+    }
+
+    rootWin->scr.id = -2;
+}
+
+void update_screens()
+{
+    /* TODO implement */
+}
 
 bool handle_xrandr_event(XEvent *ev)
 {
@@ -77,6 +122,8 @@ bool handle_xrandr_event(XEvent *ev)
         WFitParams fp;
         WScreen *screen;
         bool pivot=FALSE;
+
+        update_screens();
         
         screen=XWINDOW_REGION_OF_T(rev->root, WScreen);
         
@@ -142,13 +189,18 @@ static bool check_pivots()
     FOR_ALL_SCREENS(scr){
         Rotation rot=RR_Rotate_90;
         
-        XRRRotations(ioncore_g.dpy, scr->id, &rot);
-        
-        insrot(scr->id, rr2scrrot(rot));
+        /* XRRRotations appears to segfault on other screens (id's -2 (the 
+         * invisible root screen) and 1 (the second monitor)), on which 
+         */
+        if (scr->id == 0){
+            XRRRotations(ioncore_g.dpy, scr->id, &rot);
+            insrot(scr->id, rr2scrrot(rot));
+        }
     }
     
     return TRUE;
 }
+
 
 
 bool mod_xrandr_init()
@@ -162,6 +214,7 @@ bool mod_xrandr_init()
     if(hasXrandR){
         XRRSelectInput(ioncore_g.dpy,ioncore_g.rootwins->dummy_win,
                        RRScreenChangeNotifyMask);
+        init_screens();
     }else{
         warn_obj("mod_xrandr","XRandR is not supported on this display");
     }
