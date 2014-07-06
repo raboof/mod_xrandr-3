@@ -125,16 +125,18 @@ void init_screens()
         fprintf(stderr, "Size: %d x %d at %d x %d\n", fp.g.w, fp.g.h, fp.g.x, fp.g.y);
         
         if (screennr < existingscreencount) {
+            /* TODO(james@huronbox.com): Reconcile WRegion / WMPlex */
             WRegion *existingscreen = getexistingscreen(&rootWin->scr.mplex, screennr);
-            /* the screen sizes are likely stable, but we need to reposition 
-             * the existing screen anyway because the order and thus the 
-             * might have changed */
-            fprintf(stderr, "One existing screen %d\n", screennr);
+            WMPlex* existingmplex = (WMPlex*)existingscreen;
+
+            /* Resize the screen to the xrandr size. */
+            XResizeWindow(ioncore_g.dpy, existingmplex->win.win, fp.g.w, fp.g.h);
 
             /* for some reason this does not appear to have any effect? */
+            /* TODO(james@huronbox.com): I don't understand what "this" is */
             REGION_GEOM(existingscreen)=fp.g;
-            mplex_managed_geom((WMPlex*)existingscreen, &(fp.g));
-            mplex_do_fit_managed((WMPlex*)existingscreen, &fp);
+            mplex_managed_geom(existingmplex, &(fp.g));
+            mplex_do_fit_managed(existingmplex, &fp);
         } else {
             WScreen* newScreen;
             WMPlexAttachParams par = MPLEXATTACHPARAMS_INIT;
